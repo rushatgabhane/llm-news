@@ -1,11 +1,16 @@
+import sys
+
+if sys.platform.startswith("win"):
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from dotenv import load_dotenv
+from controllers import report_controller
 
 load_dotenv()
 
 app = FastAPI()
-
-from controllers import report_controller
 
 @app.get("/report")
 async def get_report():

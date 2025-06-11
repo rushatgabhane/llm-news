@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 HACKERNEWS_API_URL = "https://hacker-news.firebaseio.com/v0/topstories.json"
 HACKERNEWS_ITEM_URL = "https://hacker-news.firebaseio.com/v0/item/{}.json"
 
-async def fetch_top_stories(limit=2):
+async def fetch_hackernews_top_stories(limit=2):
     async with httpx.AsyncClient() as client:
         response = await client.get(HACKERNEWS_API_URL)
         top_story_ids = response.json()[:limit]
