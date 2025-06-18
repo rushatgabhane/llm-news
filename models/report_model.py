@@ -2,9 +2,10 @@ from pydantic import BaseModel
 from typing import List
 
 class ReportItem(BaseModel):
-    category: str
+    categories: List[str]
     title: str
     summary: str
+    insights: List[str]
     source: str
 
 class ReportResponse(BaseModel):
