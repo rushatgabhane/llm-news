@@ -1,58 +1,75 @@
-from services.hackernews_service import fetch_hackernews_top_stories
 from services.google_api_service import fetch_google_api_top_stories
+from services.hackernews_service import fetch_hackernews_top_stories
+from logger_service import logger
 from langchain.prompts import ChatPromptTemplate
 from models.report_model import ReportResponse, ReportItem
 from langchain_openai import ChatOpenAI
 from langchain_core.runnables import Runnable
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain.callbacks.base import AsyncCallbackHandler
 import os
 import asyncio
-import logging
+import json
 
-# Setup logging to file
-logging.basicConfig(filename='prompt_logs.log', level=logging.INFO)
+class PromptAndResponseLogger(AsyncCallbackHandler):
+    def __init__(self, logger):
+        self.logger = logger
 
-# Define callback handler to log prompts and responses
-class PromptAndResponseLogger(BaseCallbackHandler):
-    def on_llm_start(self, prompts):
-        for prompt in prompts:
-            logging.info(f"LLM Prompt: {prompt}")
+    async def on_chat_model_start(self, serialized, messages, **kwargs):
+        for message_group in messages:
+            for message in message_group:
+                self.logger.info(f"LLM Chat Prompt: {message.content}")
 
-    def on_llm_end(self, response):
+    async def on_llm_end(self, response, **kwargs):
         for generation in response.generations:
             for gen in generation:
-                logging.info(f"LLM Response: {gen.text}")
+                self.logger.info(f"LLM Response: {gen.text}")
 
-# Initialize the LLM with callback
+    async def on_llm_error(self, error, **kwargs):
+        self.logger.error(f"LLM Error: {error}")
+
 llm = ChatOpenAI(
     model_name="gpt-4.1-nano",
     openai_api_key=os.getenv("OPENAI_API_KEY"),
-    callbacks=[PromptAndResponseLogger()]
+    callbacks=[PromptAndResponseLogger(logger)]
 )
 
-# Prompt to categorize content
-category_prompt_template = ChatPromptTemplate.from_template(
-    "From the following tech article content, output categories as terms separated by commas:\n\n"
-    "No explanation. Just the category.\n\n{content}"
-)
-category_chain: Runnable = category_prompt_template | llm
+combined_prompt_template = ChatPromptTemplate.from_template(
+    """
+    You are a tech news analyzer. Given the following article content, do two tasks:
 
-# Prompt to summarize content
-summary_prompt_template = ChatPromptTemplate.from_template(
-    "Summarize the following tech article content in 2-3 sentences: {content}"
-)
-summary_chain: Runnable = summary_prompt_template | llm
+    1. Categorize the content into topics (do not use abbreviations). Separate them by making use of the standard JSON list format.
+    2. Summarize the content in 2-5 sentences.
+    3. Provide actionable insights based on the article content. Separate them by making use of the standard JSON list format.
 
-# Prompt to remove duplicates
-duplicates = ChatPromptTemplate.from_template(
-    "Return the titles of the articles that seem to be duplicates based on the summary of the article: {content}"
-)
-duplicates_chain: Runnable = duplicates | llm
+    Output strictly in this JSON format:
 
-async def generate_tech_trends_report():
+    {{
+        "categories": [
+        ],
+        "summary": "<summary>",
+        "insights": [
+        ]
+    }}
+
+    You must follow these rules:
+    - Always return a valid JSON object.
+    - Always categorize the content into one or more topics.
+    - Always provide a summary in 2-5 sentences.
+    - Always provide actionable insights based on the content.
+    - If the content is too short or insufficient, categorize it as "Insufficient content" and leave summary and insights empty.
+    - If you encounter an error or cannot process the content, categorize it as "Error", provide the error message as the summary and leave insights empty.
+
+    Article Content:
+    {content}
+    """
+)
+
+pipeline: Runnable = combined_prompt_template | llm
+
+async def generate_tech_trends_report(logger):
     articles = []
-    articles.extend(await fetch_hackernews_top_stories())
-    articles.extend(await fetch_google_api_top_stories())
+    articles.extend(await fetch_hackernews_top_stories(logger))
+    articles.extend(await fetch_google_api_top_stories(logger))
     summaries = []
 
     for article in articles:
@@ -60,31 +77,38 @@ async def generate_tech_trends_report():
             content = await article['content'] if asyncio.iscoroutine(article['content']) else article['content']
 
             if not content or len(content.strip()) < 100:
-                category = "Insufficient Content"
-                summary = "Content too short to summarize."
+                logger.warning(f"[Controller] Insufficient content for article: {article['url']}")
             else:
-                category_result, summary_result = await asyncio.gather(
-                    category_chain.ainvoke({"content": content}),
-                    summary_chain.ainvoke({"content": content})
-                )
+                response = await pipeline.ainvoke({"content": content})
+                response_text = response.content.strip()
+                logger.info(f"Raw LLM response: {response_text}")
+                
+                parsed = json.loads(response_text)
+                categories = parsed.get("categories", [])
+                summary = parsed.get("summary", "No summary provided.")
+                insights = parsed.get("insights", [])
+                if not isinstance(insights, list):
+                    insights = [str(insights)]
 
-                category = category_result.content.strip().replace("Category:", "").strip()
-                summary = summary_result.content.strip()
+            if "Error" in categories:
+                logger.error(f"[Controller] LLM returned error for article: {article['url']}")
+                continue
+            elif "Insufficient Content" in categories:
+                logger.warning(f"[Controller] Insufficient content for article: {article['url']}")
+                continue
+            else:
+                logger.info(f"[Controller] Processed article: {article['url']}")
 
             report_item = ReportItem(
-                category=category,
+                categories=categories,
                 title=article['title'],
                 source=article['url'],
-                summary=summary
+                summary=summary,
+                insights=insights
             )
             summaries.append(report_item)
 
         except Exception as e:
-            summaries.append(ReportItem(
-                category=f"Error categorizing: {e}",
-                title=article['title'],
-                source=article['url'],
-                summary=f"Error summarizing: {e}"
-            ))
+            logger.error(f"[Controller] Error processing article: {article['title']} - {e}")
 
     return ReportResponse(summaries=summaries)
