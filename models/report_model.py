@@ -9,4 +9,4 @@ class ReportItem(BaseModel):
     source: str
 
 class ReportResponse(BaseModel):
-    summaries: List[ReportItem]
+    articles: List[ReportItem]
