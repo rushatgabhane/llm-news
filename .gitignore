@@ -174,5 +174,5 @@ cython_debug/
 .pypirc
 
 # LLM-news logging
-.logs/
+logs/
 test.py
