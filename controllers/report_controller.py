@@ -1,6 +1,4 @@
 import os
-import sys
-import csv
 import aiofiles
 import random
 import string
@@ -41,12 +39,13 @@ class ReportOutput(BaseModel):
 
 combined_prompt_template = ChatPromptTemplate.from_messages([
     ("system", """
-    You are a professional tech news summarizer and analyst. Analyze the article and perform 3 tasks:
-    1. Summarize key information, facts, entities, or technical content. If no news topics exist, summarize the key features, purpose, or technical functions described (no opinions).
-    2. Categorize into topics (no abbreviations).
-    3. Provide actionable insights.
+    You are a professional tech analyst. Perform 3 tasks:
+    1. Interpret and summarize the content (never more than 15000 characters).
+    2. Categorize into topics (only high-level and no abbreviations).
+    3. Provide actionable insights (only actionable and specific insights).
     Output strictly as JSON:
     {{"summary": "<summary>", "categories": [], "insights": []}}
+    If the content seems to be a protection wall, cookie banner, captcha, or similar, use category ["Error"], and fill summary with the error and leave insights empty.
     If insufficient content, use category ["Insufficient Content"], leave summary and insights empty.
     If other errors occur, use category ["Error"], and fill summary with the error and leave insights empty.
     """),
@@ -106,32 +105,32 @@ async def write_report_to_csv(all_articles):
                 clean_for_csv(entry.get('summary', ''), delimiter)
             ]
             await file.write(delimiter.join([escape_csv_field(cell) for cell in row]) + "\n")
-    logger.info(f"CSV report written: {filepath}")
+    logger.info(f"[LLM] CSV report written: {filepath}")
 
 async def process_article(article):
     content = await article['content'] if asyncio.iscoroutine(article['content']) else article['content']
     article['source'] = article.get('url', '')
 
     if not content or len(content.strip()) < 100:
-        logger.warning(f"[Controller] Skipped (too short): {article['source']}")
+        logger.warning(f"[LLM] Skipped (too short): {article['source']}")
         return {**article, 'categories': [], 'insights': [], 'summary': '', 'status': 'Rejected', 'reason': 'Too short'}
 
     try:
         result = await combined_pipeline.ainvoke({"content": content})
         if "Insufficient Content" in result.categories:
-            logger.warning(f"[Controller] Rejected (Insufficient Content): {article['source']}")
+            logger.warning(f"[LLM] Rejected (Insufficient Content): {article['source']}")
             return {**article, 'categories': result.categories, 'insights': result.insights, 'summary': result.summary, 'status': 'Rejected', 'reason': 'Insufficient Content'}
         if "Error" in result.categories:
-            logger.warning(f"[Controller] Rejected (Error in Model Response): {article['source']}")
+            logger.warning(f"[LLM] Rejected (Error in Model Response): {article['source']}")
             return {**article, 'categories': result.categories, 'insights': [], 'summary': result.summary, 'status': 'Rejected', 'reason': 'Error in Model Response'}
-        logger.info(f"[Controller] Accepted: {article['source']}")
+        logger.info(f"[LLM] Accepted: {article['source']}")
         return {**article, 'categories': result.categories, 'insights': result.insights, 'summary': result.summary, 'status': 'Accepted', 'reason': ''}
     except Exception as e:
-        logger.error(f"[Controller] Error: {article.get('title', '')} - {e}")
+        logger.error(f"[LLM] Error: {article.get('title', '')} - {e}")
         return {**article, 'categories': [], 'insights': [], 'summary': '', 'status': 'Error', 'reason': str(e)}
 
 async def generate_tech_trends_report(logger):
-    articles = await fetch_hackernews_top_stories(logger)# + await fetch_google_api_top_stories(logger)
+    articles = await fetch_hackernews_top_stories(logger) + await fetch_google_api_top_stories(logger)
     semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
     async def limited_process(article):
@@ -145,12 +144,12 @@ async def generate_tech_trends_report(logger):
     accepted = sum(1 for r in results if r['status'] == 'Accepted')
     rejected = sum(1 for r in results if r['status'] == 'Rejected')
     errors = sum(1 for r in results if r['status'] == 'Error')
-    logger.info(f"Summary: Total={total}, Accepted={accepted}, Rejected={rejected}, Errors={errors}")
+    logger.info(f"[LLM] Summary: Total={total}, Accepted={accepted}, Rejected={rejected}, Errors={errors}")
 
-    summaries = [
+    articles = [
         ReportItem(
             categories=entry['categories'], title=entry['title'], source=entry['source'],
             summary=entry['summary'], insights=entry['insights']
         ) for entry in results if entry['status'] == 'Accepted'
     ]
-    return ReportResponse(summaries=summaries)
+    return ReportResponse(articles=articles)
