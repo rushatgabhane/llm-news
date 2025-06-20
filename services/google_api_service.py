@@ -2,13 +2,13 @@ import os
 import json
 import requests
 import math
-from services.article_content_extractor import fetch_article_content
+from services.scraper_service import fetch_article_content
 from dotenv import load_dotenv
 load_dotenv()
 
 GOOGLE_API_URL = 'https://www.googleapis.com/customsearch/v1'
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_ENV_KEYS = json.loads(os.getenv("GOOGLE_ENV_KEYS"))
+GOOGLE_ENV_KEYS = json.loads(os.getenv("GOOGLE_ENV_KEYS", "[]"))
 
 
 def fetch_news_page(logger, cx, start_index=1):
@@ -21,10 +21,14 @@ def fetch_news_page(logger, cx, start_index=1):
         'start': start_index,
     }
     response = requests.get(GOOGLE_API_URL, params=params)
-    logger.info(f"[Google API] Response from Google: {response}, using request: {requests.get(GOOGLE_API_URL, params=params)}")
+    logger.info(f"[Google API] Response from Google: {response.status_code}, using params: {params}")
     return response.json()
 
 async def fetch_google_api_top_stories(logger):
+    if not GOOGLE_ENV_KEYS:
+        logger.warning("No Google Custom Search keys provided.")
+        return []
+
     articles = []
 
     for cx in GOOGLE_ENV_KEYS:
@@ -46,12 +50,13 @@ async def fetch_google_api_top_stories(logger):
             all_items.extend(current_items)
 
         for item in all_items:
-            article_content = await fetch_article_content(logger, item['link'])
+            method_used, article_content = await fetch_article_content(logger, item['link'])
             if article_content:
                 articles.append({
                     'title': item['title'],
                     'url': item['link'],
-                    'content': article_content
+                    'content': article_content,
+                    'method': method_used
                 })
 
     logger.info(f"[Google API] Finished fetching articles: {len(articles)} articles collected")

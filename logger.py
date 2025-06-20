@@ -47,5 +47,16 @@ if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
     stream_handler.setFormatter(formatter)
     logger.addHandler(stream_handler)
 
+def sanitize_log_message(message: str) -> str:
+    if not isinstance(message, str):
+        message = str(message)
+    return ' '.join(message.replace('\n', ' ').replace('\r', ' ').split())
+
+class SafeLoggerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return sanitize_log_message(msg), kwargs
+
+safe_logger = SafeLoggerAdapter(logger, {})
+
 def get_logger():
-    return logger, LOG_FILE
+    return safe_logger, LOG_FILE
