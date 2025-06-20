@@ -7,7 +7,7 @@ if sys.platform.startswith("win"):
 from fastapi import FastAPI
 from dotenv import load_dotenv
 from controllers import report_controller
-from logger_service import get_logger
+from logger import get_logger
 
 load_dotenv()
 
