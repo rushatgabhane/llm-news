@@ -53,33 +53,21 @@ import platform
 
 
 def fetch_with_selenium(url, logger):
-
     system = platform.system()
     options = uc.ChromeOptions()
-
-    # Always run headless on Linux servers; make it configurable elsewhere
     if system == "Linux":
-        options.add_argument("--headless=new")
+        options.headless = True
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
     else:
-        # On Mac and Windows, you can choose to run headless or not
-        options.add_argument("--headless=new")
-
-    # Universal flags
+        options.headless = False
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-infobars")
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     )
-
-    # Optionally set Chrome binary location
-    chrome_bin = os.environ.get("CHROME_BINARY")
-    if chrome_bin:
-        options.binary_location = chrome_bin
-
     driver = None
     try:
         driver = uc.Chrome(options=options)
