@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from controllers import report_controller
 from logger import get_logger
 from services import rag_service
+from fastapi.responses import StreamingResponse
 
 load_dotenv()
 
@@ -34,5 +35,6 @@ async def get_report():
 @app.post("/rag")
 async def query_rag(request: RAGQuery):
     logger.info(f"[Main] Received RAG query: {request.question}")
-    answer = rag_service.query_articles(request.question, logger=logger)
-    return {"answer": answer}
+    def token_stream():
+        yield from rag_service.stream_query_articles(request.question, logger=logger)
+    return StreamingResponse(token_stream(), media_type="text/plain")

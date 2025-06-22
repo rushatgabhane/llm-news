@@ -5,6 +5,7 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 import os
 
+
 async def fetch_article_content(logger, url, method="auto"):
     if method == "BeautifulSoup" or method == "auto":
         success, content = await fetch_with_httpx_bs(url, logger=logger)
@@ -21,6 +22,7 @@ async def fetch_article_content(logger, url, method="auto"):
     logger.error(f"[Scraper] Failed scraping content from {url}")
     return None, None
 
+
 async def fetch_with_httpx_bs(url, logger):
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -28,12 +30,16 @@ async def fetch_with_httpx_bs(url, logger):
             if response.status_code != 200:
                 return False, None
 
-            soup = BeautifulSoup(response.text, 'html.parser')
-            paragraphs = soup.find_all('p')
-            content = '\n'.join([p.get_text() for p in paragraphs if p.get_text().strip()])
+            soup = BeautifulSoup(response.text, "html.parser")
+            paragraphs = soup.find_all("p")
+            content = "\n".join(
+                [p.get_text() for p in paragraphs if p.get_text().strip()]
+            )
 
             if not content.strip():
-                logger.warning(f"[BeautifulSoup] No meaningful content extracted from {url}")
+                logger.warning(
+                    f"[BeautifulSoup] No meaningful content extracted from {url}"
+                )
                 return False, None
 
             return True, content
@@ -42,15 +48,37 @@ async def fetch_with_httpx_bs(url, logger):
         logger.error(f"[BeautifulSoup] Exception while fetching {url}: {e}")
         return False, None
 
+
+import platform
+
+
 def fetch_with_selenium(url, logger):
+
+    system = platform.system()
     options = uc.ChromeOptions()
-    options.headless = False
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-    profile_dir = os.path.expanduser("~/.config/selenium_profile")
-    options.add_argument(f"--user-data-dir={profile_dir}")
+
+    # Always run headless on Linux servers; make it configurable elsewhere
+    if system == "Linux":
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+    else:
+        # On Mac and Windows, you can choose to run headless or not
+        options.add_argument("--headless=new")
+
+    # Universal flags
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-infobars")
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    )
+
+    # Optionally set Chrome binary location
+    chrome_bin = os.environ.get("CHROME_BINARY")
+    if chrome_bin:
+        options.binary_location = chrome_bin
 
     driver = None
     try:
@@ -77,4 +105,15 @@ def fetch_with_selenium(url, logger):
                 driver.quit()
             except Exception as e:
                 if logger:
-                    logger.warning(f"[Selenium] Exception while quitting driver for {url}: {e}")
+                    logger.warning(
+                        f"[Selenium] Exception while quitting driver for {url}: {e}"
+                    )
+
+        if driver:
+            try:
+                driver.quit()
+            except Exception as e:
+                if logger:
+                    logger.warning(
+                        f"[Selenium] Exception while quitting driver for {url}: {e}"
+                    )

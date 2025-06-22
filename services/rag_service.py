@@ -1,7 +1,7 @@
 import os
 import faiss
 import json
-from typing import List
+from typing import List, Generator
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.docstore.in_memory import InMemoryDocstore
@@ -10,11 +10,17 @@ from langchain.chains import RetrievalQA
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import PromptTemplate
 from services import json_logger_service
+from langchain.callbacks.base import BaseCallbackHandler
+import threading
+import queue
 
 embedding_model = OpenAIEmbeddings(api_key=os.getenv("OPENAI_API_KEY"))
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+llm = ChatOpenAI(
+    model="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY")
+)
 
 vectorstore = None
+
 
 def initialize_vectorstore(logger=None):
     global vectorstore
@@ -26,15 +32,14 @@ def initialize_vectorstore(logger=None):
     if logger:
         logger.info("[RAG] Initialized empty vectorstore.")
 
+
 def split_documents(docs: List[Document], logger=None) -> List[Document]:
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
-    )
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     chunks = splitter.split_documents(docs)
     if logger:
         logger.info(f"[RAG] Split into {len(chunks)} document chunks.")
     return chunks
+
 
 def index_articles_from_json(logger=None):
     latest_file = json_logger_service.get_latest_json_file()
@@ -56,7 +61,9 @@ def index_articles_from_json(logger=None):
         title = metadata.get("title", "")
         source = metadata.get("source", "")
         if content:
-            doc = Document(page_content=content, metadata={"title": title, "source": source})
+            doc = Document(
+                page_content=content, metadata={"title": title, "source": source}
+            )
             docs.append(doc)
 
     if docs:
@@ -65,13 +72,16 @@ def index_articles_from_json(logger=None):
         if logger:
             logger.info(f"[RAG] Indexed {len(docs)} chunks into vectorstore.")
 
+
 def query_articles(question: str, top_k: int = 5, logger=None) -> str:
     global vectorstore
     retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
     retrieved_docs = retriever.get_relevant_documents(question)
 
     if logger:
-        logger.info(f"[RAG] Retrieved {len(retrieved_docs)} chunks for question: {question}")
+        logger.info(
+            f"[RAG] Retrieved {len(retrieved_docs)} chunks for question: {question}"
+        )
         retrieved_sources = set()
         for i, doc in enumerate(retrieved_docs, 1):
             source = doc.metadata.get("source", "N/A")
@@ -80,12 +90,11 @@ def query_articles(question: str, top_k: int = 5, logger=None) -> str:
                 logger.info(f"[RAG] Source: {source} | Title: {title}")
                 retrieved_sources.add(source)
 
-    custom_prompt = PromptTemplate.from_template("""
+    custom_prompt = PromptTemplate.from_template(
+        """
 You are an expert AI technology analyst.
 
 Use the provided context to identify and summarize the latest AI trends. Combine information from multiple documents if necessary.
-
-If no relevant information is found, say: "No relevant trends found."
 
 Context:
 {context}
@@ -94,19 +103,107 @@ Question:
 {question}
 
 Answer:
-""")
+"""
+    )
 
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         retriever=retriever,
         return_source_documents=True,
-        chain_type_kwargs={"prompt": custom_prompt}
+        chain_type_kwargs={"prompt": custom_prompt},
     )
 
     result = qa_chain.invoke({"query": question})
 
     if logger:
-        full_context = "\n\n".join([doc.page_content for doc in result["source_documents"]])
-        logger.info(f"[RAG] Context provided to LLM (first 2000 chars): {full_context[:2000]}")
+        full_context = "\n\n".join(
+            [doc.page_content for doc in result["source_documents"]]
+        )
+        logger.info(
+            f"[RAG] Context provided to LLM (first 2000 chars): {full_context[:2000]}"
+        )
 
     return result["result"]
+
+
+class TokenStreamHandler(BaseCallbackHandler):
+    def __init__(self):
+        self.queue = queue.Queue()
+        self.done = threading.Event()
+
+    def on_llm_new_token(self, token: str, **kwargs):
+        self.queue.put(token)
+
+    def on_llm_end(self, *args, **kwargs):
+        self.done.set()
+
+    def stream(self) -> Generator[str, None, None]:
+        while not self.done.is_set() or not self.queue.empty():
+            try:
+                token = self.queue.get(timeout=0.1)
+                yield token
+            except queue.Empty:
+                continue
+
+
+def stream_query_articles(question: str, top_k: int = 5, logger=None) -> Generator[str, None, None]:
+    global vectorstore
+    retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
+    retrieved_docs = retriever.get_relevant_documents(question)
+
+    if logger:
+        logger.info(
+            f"[RAG] Retrieved {len(retrieved_docs)} chunks for question: {question}"
+        )
+        retrieved_sources = set()
+        for i, doc in enumerate(retrieved_docs, 1):
+            source = doc.metadata.get("source", "N/A")
+            title = doc.metadata.get("title", "N/A")
+            if source not in retrieved_sources:
+                logger.info(f"[RAG] Source: {source} | Title: {title}")
+                retrieved_sources.add(source)
+
+    custom_prompt = PromptTemplate.from_template(
+        """
+You are an expert AI technology analyst.
+
+Use the provided context to identify and summarize the latest AI trends. Combine information from multiple documents if necessary.
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:
+"""
+    )
+
+    handler = TokenStreamHandler()
+    streaming_llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        api_key=os.getenv("OPENAI_API_KEY"),
+        streaming=True,
+        callbacks=[handler],
+    )
+
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=streaming_llm,
+        retriever=retriever,
+        return_source_documents=True,
+        chain_type_kwargs={"prompt": custom_prompt},
+    )
+
+    # Run in a thread so we can yield tokens as they arrive
+    def run_chain():
+        qa_chain.invoke({"query": question})
+        handler.done.set()
+
+    thread = threading.Thread(target=run_chain)
+    thread.start()
+
+    for token in handler.stream():
+        yield token
+
+    thread.join()
