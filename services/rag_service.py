@@ -53,6 +53,10 @@ def index_articles_from_json(logger=None):
 
     docs = []
     for entry in all_articles:
+        # Only index articles that are not rejected
+        status = entry.get("logging", {}).get("status", "")
+        if status == "Rejected":
+            continue
         metadata = entry.get("metadata", {})
         content = metadata.get("raw_content", "") or metadata.get("content", "")
         title = metadata.get("title", "")
@@ -97,12 +101,31 @@ def stream_query_articles(
     retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
     retrieved_docs = retriever.get_relevant_documents(question)
 
+    # Filter out docs whose source is from a rejected article
+    # (Assumes only non-rejected docs are indexed, but double check for safety)
+    filtered_docs = []
+    latest_file = json_logger_service.get_latest_json_file()
+    rejected_sources = set()
+    if latest_file:
+        with open(latest_file, "r", encoding="utf-8") as f:
+            all_articles = json.load(f)
+            for entry in all_articles:
+                status = entry.get("logging", {}).get("status", "")
+                if status == "Rejected":
+                    metadata = entry.get("metadata", {})
+                    source = metadata.get("source", "")
+                    rejected_sources.add(source)
+    for doc in retrieved_docs:
+        url = doc.metadata.get("source", "N/A")
+        if url not in rejected_sources:
+            filtered_docs.append(doc)
+
     if logger:
         logger.info(
-            f"[RAG] Retrieved {len(retrieved_docs)} chunks for question: {question}"
+            f"[RAG] Retrieved {len(filtered_docs)} non-rejected chunks for question: {question}"
         )
         retrieved_sources = set()
-        for i, doc in enumerate(retrieved_docs, 1):
+        for i, doc in enumerate(filtered_docs, 1):
             source = doc.metadata.get("source", "N/A")
             title = doc.metadata.get("title", "N/A")
             if source not in retrieved_sources:
@@ -112,7 +135,7 @@ def stream_query_articles(
     # Collect unique sources (title and URL)
     unique_sources = []
     seen = set()
-    for doc in retrieved_docs:
+    for doc in filtered_docs:
         title = doc.metadata.get("title", "N/A")
         url = doc.metadata.get("source", "N/A")
         if url and url not in seen:

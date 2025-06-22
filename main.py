@@ -49,6 +49,8 @@ async def get_categories():
         all_articles = json.load(f)
     categories = set()
     for entry in all_articles:
-        cats = entry.get("response", {}).get("categories", [])
-        categories.update(cats)
+        status = entry.get("logging", {}).get("status", "")
+        if status != "Rejected":
+            cats = entry.get("response", {}).get("categories", [])
+            categories.update(cats)
     return {"categories": sorted(categories)}

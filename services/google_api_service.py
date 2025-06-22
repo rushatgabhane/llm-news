@@ -9,7 +9,6 @@ GOOGLE_API_URL = 'https://www.googleapis.com/customsearch/v1'
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_ENV_KEYS = json.loads(os.getenv("GOOGLE_ENV_KEYS", "[]"))
 
-
 def fetch_news_page(logger, cx, start_index=1):
     params = {
         'key': GOOGLE_API_KEY,
