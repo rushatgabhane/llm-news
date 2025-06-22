@@ -3,15 +3,17 @@ from services.google_api_service import fetch_google_api_top_stories
 from services.hackernews_service import fetch_hackernews_top_stories
 from services.llm_service import process_article
 from services.csv_logger_service import write_report_to_csv
+from services import json_logger_service
 from models.report_model import ReportResponse, ReportItem
 from logger import logger
+from services.scraper_service import fetch_article_content
+from services import rag_service
 
 CONCURRENCY_LIMIT = 3
 
 async def generate_tech_trends_report(logger):
     hn_metadata = await fetch_hackernews_top_stories(logger)
     google_metadata = await fetch_google_api_top_stories(logger)
-
     combined_metadata = hn_metadata + google_metadata
 
     seen_urls = set()
@@ -23,7 +25,6 @@ async def generate_tech_trends_report(logger):
 
     logger.info(f"[Report] {len(unique_articles)} unique articles after deduplication.")
 
-    from services.scraper_service import fetch_article_content
     articles_with_content = []
     for article in unique_articles:
         method, content = await fetch_article_content(logger, article['url'])
@@ -32,7 +33,6 @@ async def generate_tech_trends_report(logger):
             article['method'] = method
             articles_with_content.append(article)
 
-    CONCURRENCY_LIMIT = 3
     semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
 
     async def limited_process(article):
@@ -42,6 +42,11 @@ async def generate_tech_trends_report(logger):
     results = await asyncio.gather(*(limited_process(article) for article in articles_with_content))
 
     await write_report_to_csv(results)
+
+    json_path = await json_logger_service.write_report_to_json(results)
+    logger.info(f"[Report] JSON report written to {json_path}")
+
+    rag_service.index_articles_from_json()
 
     total = len(results)
     accepted = sum(1 for r in results if r['logging']['status'] == 'Accepted')
