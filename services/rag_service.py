@@ -124,6 +124,7 @@ def stream_query_articles(
 You are an expert AI technology analyst.
 
 Use the provided context to identify and summarize the latest AI trends. Combine information from multiple documents if necessary.
+Keep the answer concise.
 
 Context:
 {context}

@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from controllers import report_controller
 from logger import get_logger
-from services import rag_service
-from fastapi.responses import StreamingResponse
+from services import rag_service, json_logger_service
+from fastapi.responses import StreamingResponse, JSONResponse
+import json
 
 load_dotenv()
 
@@ -30,7 +31,7 @@ class RAGQuery(BaseModel):
 async def get_report():
     logger.info("[Main] Received report request")
     report = await report_controller.generate_tech_trends_report(logger)
-    return report
+    return JSONResponse(content=report.model_dump())
 
 @app.post("/rag")
 async def query_rag(request: RAGQuery):
@@ -38,3 +39,16 @@ async def query_rag(request: RAGQuery):
     def token_stream():
         yield from rag_service.stream_query_articles(request.question, logger=logger)
     return StreamingResponse(token_stream(), media_type="text/plain")
+
+@app.get("/categories")
+async def get_categories():
+    latest_file = json_logger_service.get_latest_json_file()
+    if not latest_file:
+        return {"categories": []}
+    with open(latest_file, "r", encoding="utf-8") as f:
+        all_articles = json.load(f)
+    categories = set()
+    for entry in all_articles:
+        cats = entry.get("response", {}).get("categories", [])
+        categories.update(cats)
+    return {"categories": sorted(categories)}
