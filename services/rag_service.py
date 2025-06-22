@@ -15,9 +15,6 @@ import threading
 import queue
 
 embedding_model = OpenAIEmbeddings(api_key=os.getenv("OPENAI_API_KEY"))
-llm = ChatOpenAI(
-    model="gpt-4o-mini", temperature=0, api_key=os.getenv("OPENAI_API_KEY")
-)
 
 vectorstore = None
 
@@ -73,59 +70,6 @@ def index_articles_from_json(logger=None):
             logger.info(f"[RAG] Indexed {len(docs)} chunks into vectorstore.")
 
 
-def query_articles(question: str, top_k: int = 5, logger=None) -> str:
-    global vectorstore
-    retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
-    retrieved_docs = retriever.get_relevant_documents(question)
-
-    if logger:
-        logger.info(
-            f"[RAG] Retrieved {len(retrieved_docs)} chunks for question: {question}"
-        )
-        retrieved_sources = set()
-        for i, doc in enumerate(retrieved_docs, 1):
-            source = doc.metadata.get("source", "N/A")
-            title = doc.metadata.get("title", "N/A")
-            if source not in retrieved_sources:
-                logger.info(f"[RAG] Source: {source} | Title: {title}")
-                retrieved_sources.add(source)
-
-    custom_prompt = PromptTemplate.from_template(
-        """
-You are an expert AI technology analyst.
-
-Use the provided context to identify and summarize the latest AI trends. Combine information from multiple documents if necessary.
-
-Context:
-{context}
-
-Question:
-{question}
-
-Answer:
-"""
-    )
-
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        retriever=retriever,
-        return_source_documents=True,
-        chain_type_kwargs={"prompt": custom_prompt},
-    )
-
-    result = qa_chain.invoke({"query": question})
-
-    if logger:
-        full_context = "\n\n".join(
-            [doc.page_content for doc in result["source_documents"]]
-        )
-        logger.info(
-            f"[RAG] Context provided to LLM (first 2000 chars): {full_context[:2000]}"
-        )
-
-    return result["result"]
-
-
 class TokenStreamHandler(BaseCallbackHandler):
     def __init__(self):
         self.queue = queue.Queue()
@@ -146,7 +90,9 @@ class TokenStreamHandler(BaseCallbackHandler):
                 continue
 
 
-def stream_query_articles(question: str, top_k: int = 5, logger=None) -> Generator[str, None, None]:
+def stream_query_articles(
+    question: str, top_k: int = 5, logger=None
+) -> Generator[str, None, None]:
     global vectorstore
     retriever = vectorstore.as_retriever(search_kwargs={"k": top_k})
     retrieved_docs = retriever.get_relevant_documents(question)
@@ -162,6 +108,16 @@ def stream_query_articles(question: str, top_k: int = 5, logger=None) -> Generat
             if source not in retrieved_sources:
                 logger.info(f"[RAG] Source: {source} | Title: {title}")
                 retrieved_sources.add(source)
+
+    # Collect unique sources (title and URL)
+    unique_sources = []
+    seen = set()
+    for doc in retrieved_docs:
+        title = doc.metadata.get("title", "N/A")
+        url = doc.metadata.get("source", "N/A")
+        if url and url not in seen:
+            unique_sources.append((title, url))
+            seen.add(url)
 
     custom_prompt = PromptTemplate.from_template(
         """
@@ -181,8 +137,8 @@ Answer:
 
     handler = TokenStreamHandler()
     streaming_llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
+        model="gpt-4.1-mini",
+        temperature=0.2,
         api_key=os.getenv("OPENAI_API_KEY"),
         streaming=True,
         callbacks=[handler],
@@ -207,3 +163,9 @@ Answer:
         yield token
 
     thread.join()
+
+    # After the answer, yield the sources as markdown
+    if unique_sources:
+        yield "\n\n---\n**Sources:**\n"
+        for i, (title, url) in enumerate(unique_sources, 1):
+            yield f"- [{title}]({url})\n"
