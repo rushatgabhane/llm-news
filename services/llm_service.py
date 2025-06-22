@@ -117,6 +117,7 @@ async def process_article(article):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": safe_content},
             ]
+            full_prompt = f"{system_prompt}\n\nContent:\n{safe_content}"
             result = await llm.ainvoke(messages)
             raw_json = extract_json_block(result.content)
             repaired = repair_json(raw_json)
@@ -155,6 +156,7 @@ async def process_article(article):
                     "title": article.get("title", ""),
                     "raw_content": full_content,
                     "missing_categories": parsed_result.logging.missing_categories,
+                    "prompt": full_prompt
                 },
             }
 
@@ -173,5 +175,6 @@ async def process_article(article):
                     "title": article.get("title", ""),
                     "raw_content": full_content,
                     "missing_categories": [],
+                    "prompt": full_prompt
                 },
             }
