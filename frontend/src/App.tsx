@@ -163,7 +163,7 @@ function App() {
               marginBottom: 12,
             }}
           >
-            <h2 style={{ textAlign: 'center', margin: 0, fontSize: 16 }}>AI Insights</h2>
+            <h2 style={{ textAlign: 'center', margin: 0, fontSize: 16 }}>Insights GPT</h2>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleClearChat}
