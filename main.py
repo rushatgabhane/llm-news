@@ -78,8 +78,8 @@ scheduler = BackgroundScheduler()
 
 def start_scheduler():
     # Run once on startup (in background)
-    loop = asyncio.get_event_loop()
-    loop.create_task(run_report_and_index())
+    # loop = asyncio.get_event_loop()
+    # loop.create_task(run_report_and_index())
 
     # Schedule weekly job (every Monday at 00:00)
     scheduler.add_job(

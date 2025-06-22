@@ -56,12 +56,14 @@ def fetch_with_selenium(url, logger):
     system = platform.system()
     options = uc.ChromeOptions()
     if system == "Linux":
-        options.headless = True
+        options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-    else:
-        options.headless = False
+    # macos
+    elif system == "Darwin":
+        options.add_argument("--headless=new")
+
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-infobars")
