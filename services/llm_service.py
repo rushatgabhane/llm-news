@@ -104,12 +104,14 @@ def extract_json_block(text):
 
 async def process_article(article):
     retries_left = article.get("retries_left", 1)
+    full_content = article.get('content', '')
+
     while True:
-        safe_content = truncate_to_fit(article['content'])
+        safe_content = truncate_to_fit(full_content)
         try:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Article Content:\n{safe_content}"}
+                {"role": "user", "content": safe_content}
             ]
             result = await llm.ainvoke(messages)
             raw_json = extract_json_block(result.content)
@@ -117,7 +119,6 @@ async def process_article(article):
             parsed_dict = json.loads(repaired)
             parsed_result = ReportOutput.model_validate(parsed_dict)
 
-            # Check for any missing categories
             for cat in parsed_result.logging.missing_categories:
                 logger.warning(f"[LLM] Found missing category '{cat}' for article: {article['url']}")
 
@@ -126,7 +127,7 @@ async def process_article(article):
                     logger.info(f"[LLM] Retry triggered for: {article['url']} (Remaining retries: {retries_left})")
                     new_method, new_content = await fetch_article_content(logger, article['url'], method="selenium")
                     if new_content:
-                        article['content'] = new_content
+                        full_content = new_content
                         article['method'] = "Selenium"
                         retries_left -= 1
                         continue
@@ -142,8 +143,7 @@ async def process_article(article):
                 "metadata": {
                     "source": article.get('url', ''),
                     "title": article.get('title', ''),
-                    "content": safe_content,
-                    "prompt": f"{system_prompt}\n\nArticle Content:\n{safe_content}",
+                    "raw_content": full_content,
                     "missing_categories": parsed_result.logging.missing_categories
                 }
             }
@@ -165,8 +165,7 @@ async def process_article(article):
                 "metadata": {
                     "source": article.get('url', ''),
                     "title": article.get('title', ''),
-                    "content": article['content'],
-                    "prompt": "",
+                    "raw_content": full_content,
                     "missing_categories": []
                 }
             }
