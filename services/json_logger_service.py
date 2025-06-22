@@ -4,6 +4,7 @@ import json
 import datetime
 from pathlib import Path
 
+
 async def write_report_to_json(all_articles):
     logs_dir = Path(__file__).resolve().parent.parent / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -15,6 +16,7 @@ async def write_report_to_json(all_articles):
         await file.write(json.dumps(all_articles, ensure_ascii=False, indent=2))
 
     return filepath
+
 
 def get_latest_json_file():
     logs_dir = Path(__file__).resolve().parent.parent / "logs"

@@ -8,8 +8,8 @@ from logger import logger
 from langchain_openai import ChatOpenAI
 from json_repair import repair_json
 
-CATEGORIES_FILE = os.path.join(os.path.dirname(__file__), '../categories.json')
-with open(CATEGORIES_FILE, 'r') as f:
+CATEGORIES_FILE = os.path.join(os.path.dirname(__file__), "../categories.json")
+with open(CATEGORIES_FILE, "r") as f:
     CATEGORIES_INDEX = json.load(f)["categories"]
 
 OPENAI_MODEL = "gpt-4o-mini"
@@ -17,11 +17,8 @@ MAX_TOTAL_TOKENS = 200_000
 RESERVED_OUTPUT_TOKENS = 5_000
 MAX_INPUT_TOKENS = MAX_TOTAL_TOKENS - RESERVED_OUTPUT_TOKENS
 
-llm = ChatOpenAI(
-    model=OPENAI_MODEL,
-    temperature=0,
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+
 
 class LoggingOutput(BaseModel):
     status: str
@@ -29,14 +26,17 @@ class LoggingOutput(BaseModel):
     retry: bool
     missing_categories: list[str]
 
+
 class ResponseOutput(BaseModel):
     categories: list[str]
     insights: list[str]
     summary: str
 
+
 class ReportOutput(BaseModel):
     response: ResponseOutput
     logging: LoggingOutput
+
 
 category_list_str = ", ".join(CATEGORIES_INDEX)
 
@@ -84,17 +84,20 @@ You are a professional tech analyst. Perform these tasks based on the provided c
 }}
 """
 
+
 def truncate_to_fit(content):
     encoding = tiktoken.encoding_for_model(OPENAI_MODEL)
     while True:
-        total_tokens = (
-            len(encoding.encode(system_prompt)) +
-            len(encoding.encode("Article Content:\n" + content))
+        total_tokens = len(encoding.encode(system_prompt)) + len(
+            encoding.encode("Article Content:\n" + content)
         )
         if total_tokens <= MAX_INPUT_TOKENS:
             return content
-        logger.warning(f"[LLM] Truncating content. Current estimated tokens: {total_tokens}")
-        content = content[:int(len(content) * 0.9)]
+        logger.warning(
+            f"[LLM] Truncating content. Current estimated tokens: {total_tokens}"
+        )
+        content = content[: int(len(content) * 0.9)]
+
 
 def extract_json_block(text):
     match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
@@ -102,16 +105,17 @@ def extract_json_block(text):
         return match.group(1)
     return text.strip()
 
+
 async def process_article(article):
     retries_left = article.get("retries_left", 1)
-    full_content = article.get('content', '')
+    full_content = article.get("content", "")
 
     while True:
         safe_content = truncate_to_fit(full_content)
         try:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": safe_content}
+                {"role": "user", "content": safe_content},
             ]
             result = await llm.ainvoke(messages)
             raw_json = extract_json_block(result.content)
@@ -120,15 +124,21 @@ async def process_article(article):
             parsed_result = ReportOutput.model_validate(parsed_dict)
 
             for cat in parsed_result.logging.missing_categories:
-                logger.warning(f"[LLM] Found missing category '{cat}' for article: {article['url']}")
+                logger.warning(
+                    f"[LLM] Found missing category '{cat}' for article: {article['url']}"
+                )
 
             if parsed_result.logging.retry:
                 if retries_left > 0:
-                    logger.info(f"[LLM] Retry triggered for: {article['url']} (Remaining retries: {retries_left})")
-                    new_method, new_content = await fetch_article_content(logger, article['url'], method="selenium")
+                    logger.info(
+                        f"[LLM] Retry triggered for: {article['url']} (Remaining retries: {retries_left})"
+                    )
+                    new_method, new_content = await fetch_article_content(
+                        logger, article["url"], method="selenium"
+                    )
                     if new_content:
                         full_content = new_content
-                        article['method'] = "Selenium"
+                        article["method"] = "Selenium"
                         retries_left -= 1
                         continue
                     else:
@@ -141,11 +151,11 @@ async def process_article(article):
                 "logging": parsed_result.logging.model_dump(),
                 "response": parsed_result.response.model_dump(),
                 "metadata": {
-                    "source": article.get('url', ''),
-                    "title": article.get('title', ''),
+                    "source": article.get("url", ""),
+                    "title": article.get("title", ""),
                     "raw_content": full_content,
-                    "missing_categories": parsed_result.logging.missing_categories
-                }
+                    "missing_categories": parsed_result.logging.missing_categories,
+                },
             }
 
         except (json.JSONDecodeError, ValidationError, Exception) as e:
@@ -155,17 +165,13 @@ async def process_article(article):
                     "status": "Error",
                     "reason": str(e),
                     "retry": False,
-                    "missing_categories": []
+                    "missing_categories": [],
                 },
-                "response": {
-                    "categories": [],
-                    "summary": "",
-                    "insights": []
-                },
+                "response": {"categories": [], "summary": "", "insights": []},
                 "metadata": {
-                    "source": article.get('url', ''),
-                    "title": article.get('title', ''),
+                    "source": article.get("url", ""),
+                    "title": article.get("title", ""),
                     "raw_content": full_content,
-                    "missing_categories": []
-                }
+                    "missing_categories": [],
+                },
             }
