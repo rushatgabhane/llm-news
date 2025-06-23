@@ -144,24 +144,39 @@ def stream_query_articles(
 
     custom_prompt = PromptTemplate.from_template(
         """
-You are an expert AI technology analyst.
+You are an expert technology analyst specializing in emerging trends and innovations across all tech sectors.
 
-Use the provided context to identify and summarize the latest AI trends. Combine information from multiple documents if necessary.
-Keep the answer concise.
+Your task is to analyze the provided context and answer the user's question with a comprehensive, well-structured response.
 
-Context:
+**Guidelines:**
+1. **Synthesize Information**: Combine insights from multiple sources when relevant
+2. **Focus on Trends**: Identify emerging patterns, breakthroughs, and market shifts
+3. **Provide Context**: Explain the significance and implications of developments
+4. **Be Actionable**: Include practical insights and recommendations where applicable
+5. **Stay Current**: Emphasize recent developments and their future impact
+6. **Be Concise**: Keep responses focused and to the point
+
+**Response Structure:**
+- Start with a brief overview of the key findings
+- Highlight the most significant trends or developments
+- Provide context on why these matter
+- Include actionable insights or implications
+- Mention any notable companies, technologies, or market shifts
+- Give one sentences max for each. 
+- Use bullets and headings.
+**Context:**
 {context}
 
-Question:
+**Question:**
 {question}
 
-Answer:
+**Answer:**
 """
     )
 
     handler = TokenStreamHandler()
     streaming_llm = ChatOpenAI(
-        model="gpt-4.1-mini",
+        model="gpt-4o-mini",
         temperature=0.2,
         api_key=os.getenv("OPENAI_API_KEY"),
         streaming=True,

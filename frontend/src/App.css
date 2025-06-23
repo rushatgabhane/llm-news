@@ -8,6 +8,31 @@
   margin: 0 auto;
 }
 
+/* Chat container scroll improvements */
+.chat-container {
+  scroll-behavior: smooth;
+  scroll-padding-bottom: 20px;
+  -webkit-overflow-scrolling: touch; /* For iOS smooth scrolling */
+}
+
+.chat-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.chat-container::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.chat-container::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
 a {
   color: #2800d7;
   font-weight: bold;

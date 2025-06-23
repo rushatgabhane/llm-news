@@ -5,7 +5,7 @@ HACKERNEWS_API_URL = "https://hacker-news.firebaseio.com/v0/topstories.json"
 HACKERNEWS_ITEM_URL = "https://hacker-news.firebaseio.com/v0/item/{}.json"
 
 
-async def fetch_hackernews_top_stories(logger, limit=10):
+async def fetch_hackernews_top_stories(logger, limit=25):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(HACKERNEWS_API_URL, timeout=10)

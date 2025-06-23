@@ -25,16 +25,48 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (chat.length === 0) {
+      loadLatestReport();
+    }
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('chat-history', JSON.stringify(chat));
+    const timer = setTimeout(() => {
+      chatEndRef.current?.scrollIntoView();
+    }, 10);
+    return () => clearTimeout(timer);
   }, [chat]);
 
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const loadLatestReport = async () => {
+    try {
+      const response = await fetch('/latest-report');
+      if (!response.ok) {
+        console.error('Failed to load latest report');
+        return;
+      }
+      const data = await response.json();
+      const items: any[] = data.items || [];
+      
+      if (items.length > 0) {
+        const formatted = items
+          .map(
+            (item: any) =>
+              `### [${item.title}](${item.source})\n` +
+              `**Categories:** ${item.categories.join(', ')}\n\n` +
+              `**Summary:** ${item.summary}\n\n` +
+              `**Insights:**\n${(item.insights as string[])
+                .map((i: string) => `- ${i}`)
+                .join('\n')}\n`
+          )
+          .join('\n---\n');
+        
+        setChat([{ sender: 'bot', text: `**Latest Tech Trends Report:**\n\n${formatted}` }]);
+      }
+    } catch (error) {
+      console.error('Error loading latest report:', error);
+    }
   };
-
-  React.useEffect(() => {
-    scrollToBottom();
-  }, [chat]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -49,6 +81,7 @@ function App() {
     setLoading(true);
     let answer = '';
     setChat((prev) => [...prev, { sender: 'bot', text: '...' }]);
+    
     const response = await fetch('/rag', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,23 +95,35 @@ function App() {
       setLoading(false);
       return;
     }
+    
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let done = false;
-    while (!done) {
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-      if (value) {
-        const chunk = decoder.decode(value);
-        answer += chunk;
-        setChat((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { sender: 'bot', text: answer };
-          return updated;
-        });
+    
+    try {
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        if (value) {
+          const chunk = decoder.decode(value);
+          answer += chunk;
+          
+          setChat((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { sender: 'bot', text: answer };
+            return updated;
+          });
+        }
       }
+    } catch (error) {
+      console.error('Error during streaming:', error);
+      setChat((prev) => [
+        ...prev.slice(0, -1),
+        { sender: 'bot', text: 'Error occurred during streaming.' },
+      ]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleReport = async () => {
@@ -127,6 +172,9 @@ function App() {
   const handleClearChat = () => {
     setChat([]);
     localStorage.removeItem('chat-history');
+    setTimeout(() => {
+      loadLatestReport();
+    }, 100);
   };
 
   return (
@@ -163,7 +211,7 @@ function App() {
               marginBottom: 12,
             }}
           >
-            <h2 style={{ textAlign: 'center', margin: 0, fontSize: 16 }}>AI Insights</h2>
+            <h2 style={{ textAlign: 'center', margin: 0, fontSize: 16 }}>Insights GPT</h2>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={handleClearChat}
@@ -248,9 +296,9 @@ function App() {
           }}
         >
           <div
+            className="chat-container"
             style={{
               flex: '1 1 0%',
-              minHeight: 0,
               overflowY: 'auto',
               background: '#fff',
               padding: 16,

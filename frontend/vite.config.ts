@@ -9,6 +9,7 @@ export default defineConfig({
       '/report': 'http://localhost:8000',
       '/rag': 'http://localhost:8000',
       '/categories': 'http://localhost:8000',
+      '/latest-report': 'http://localhost:8000',
     },
     allowedHosts: true,
   }

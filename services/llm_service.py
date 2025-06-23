@@ -7,6 +7,7 @@ from services.scraper_service import fetch_article_content
 from logger import logger
 from langchain_openai import ChatOpenAI
 from json_repair import repair_json
+from dotenv import load_dotenv
 
 CATEGORIES_FILE = os.path.join(os.path.dirname(__file__), "../categories.json")
 with open(CATEGORIES_FILE, "r") as f:
@@ -17,7 +18,8 @@ MAX_TOTAL_TOKENS = 200_000
 RESERVED_OUTPUT_TOKENS = 5_000
 MAX_INPUT_TOKENS = MAX_TOTAL_TOKENS - RESERVED_OUTPUT_TOKENS
 
-llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+load_dotenv()
+llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0.2, api_key=os.getenv("OPENAI_API_KEY"))
 
 
 class LoggingOutput(BaseModel):
@@ -117,7 +119,6 @@ async def process_article(article):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": safe_content},
             ]
-            full_prompt = f"{system_prompt}\n\nContent:\n{safe_content}"
             result = await llm.ainvoke(messages)
             raw_json = extract_json_block(result.content)
             repaired = repair_json(raw_json)
@@ -156,7 +157,6 @@ async def process_article(article):
                     "title": article.get("title", ""),
                     "raw_content": full_content,
                     "missing_categories": parsed_result.logging.missing_categories,
-                    "prompt": full_prompt
                 },
             }
 
@@ -178,3 +178,46 @@ async def process_article(article):
                     "prompt": full_prompt
                 },
             }
+
+async def validate_article_url(url, title):
+    """Use LLM to determine if a URL is an actual article."""
+    validation_prompt = f"""
+You are a URL validator. Determine if the given URL and title represent an actual article or just a category/section page.
+
+URL: {url}
+Title: {title}
+
+Rules for determining if it's an article:
+1. It should be a specific piece of content, not a category listing
+2. It should have a specific title that describes the content
+3. It should not be a general page like "/technology/" or "/news/"
+4. It should be a detailed article, story, or report
+
+Respond with a JSON object:
+{{
+    "is_article": true/false,
+    "reason": "brief explanation of your decision"
+}}
+
+Examples:
+- URL: "https://example.com/technology/2024/06/22/ai-startup-raises-funding" → is_article: true
+- URL: "https://example.com/technology/" → is_article: false
+- URL: "https://example.com/news/2024/06/22/company-announces-breakthrough" → is_article: true
+- URL: "https://example.com/news/" → is_article: false
+"""
+
+    try:
+        messages = [
+            {"role": "system", "content": "You are a URL validator. Respond only with valid JSON."},
+            {"role": "user", "content": validation_prompt},
+        ]
+        result = await llm.ainvoke(messages)
+        raw_json = extract_json_block(result.content)
+        repaired = repair_json(raw_json)
+        parsed_dict = json.loads(repaired)
+        
+        return parsed_dict.get("is_article", False), parsed_dict.get("reason", "No reason provided")
+    except Exception as e:
+        logger.error(f"[LLM] URL validation error for {url}: {e}")
+        # Default to accepting if validation fails
+        return True, f"Validation failed, defaulting to accept: {str(e)}"
