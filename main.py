@@ -66,6 +66,32 @@ async def get_categories():
     return {"categories": sorted(categories)}
 
 
+@app.get("/latest-report")
+async def get_latest_report():
+    logger.info("[Main] Received latest report request")
+    latest_file = json_logger_service.get_latest_json_file()
+    if not latest_file:
+        return JSONResponse(content={"items": []})
+    
+    with open(latest_file, "r", encoding="utf-8") as f:
+        all_articles = json.load(f)
+    
+    # Filter only accepted articles and format them
+    accepted_articles = [
+        {
+            "categories": entry["response"]["categories"],
+            "title": entry["metadata"].get("title", "No Title"),
+            "source": entry["metadata"].get("source", ""),
+            "summary": entry["response"]["summary"],
+            "insights": entry["response"]["insights"],
+        }
+        for entry in all_articles
+        if entry["logging"]["status"] == "Accepted"
+    ]
+    
+    return JSONResponse(content={"items": accepted_articles})
+
+
 async def run_report_and_index():
     logger.info("[Scheduler] Running scheduled report and index job.")
     report = await report_controller.generate_tech_trends_report(logger)

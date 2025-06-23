@@ -61,8 +61,8 @@ def fetch_with_selenium(url, logger):
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
     # macos
-    elif system == "Darwin":
-        options.add_argument("--headless=new")
+    # elif system == "Darwin":
+    #     options.add_argument("--headless=new")
 
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-extensions")
