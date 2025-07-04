@@ -37,7 +37,7 @@ async def write_report_to_csv(all_articles):
     headers = [
         "Source",
         "Title",
-        "Prompt",
+        "Content",
         "Status",
         "Reason",
         "Retry",
@@ -57,7 +57,7 @@ async def write_report_to_csv(all_articles):
                 row = [
                     clean_for_csv(metadata_info.get("source", ""), delimiter),
                     clean_for_csv(metadata_info.get("title", ""), delimiter),
-                    clean_for_csv(metadata_info.get("prompt", ""), delimiter),
+                    clean_for_csv(metadata_info.get("raw_content", ""), delimiter),
                     logging_info.get("status", ""),
                     logging_info.get("reason", ""),
                     str(logging_info.get("retry", "")),
