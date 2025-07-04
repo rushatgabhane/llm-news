@@ -2,7 +2,7 @@
 
 ![flow-chart not found](flow-chart.png)
 
-## Quick setup
+## Quick setup - Backend
 1. Create a venv - `python3 -m venv venv`
 2. Activate the venv - `source venv/bin/activate`
 3. Install the requirements - `pip install -r requirements.txt`
@@ -11,6 +11,11 @@
 6. Create Google API key and add to .env from https://console.cloud.google.com/apis/credentials
 7. Create search engines and add searchengine-IDs to .env from https://programmablesearchengine.google.com/controlpanel/all (see 'Creating Google search engines' for more information)
 8. Run the app - `uvicorn main:app --reload`
+
+## Quick setup - frontend
+1. cd `frontend`
+2. `npm install`
+3. `npm run start`
 
 ## Collecting sources
 LLM-News collects sources (URLs) by using the Hacker News & Google API. The Hacker News API returns a list of websites uploaded and upvoted by its comprehensive userbase. On the other hand, the Google API allows for a more dynamic approach in which a search string can be defined to find sources on your own terms. Keep in mind that a Google search string must be delicately balanced to reduce noise to a minimum.
