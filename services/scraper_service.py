@@ -3,8 +3,9 @@ import httpx
 from bs4 import BeautifulSoup
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
+import platform
 import os
-
+import win32api
 
 async def fetch_article_content(logger, url, method="auto"):
     if method == "BeautifulSoup" or method == "auto":
@@ -48,21 +49,37 @@ async def fetch_with_httpx_bs(url, logger):
         logger.error(f"[BeautifulSoup] Exception while fetching {url}: {e}")
         return False, None
 
+def get_chrome_version_win(logger, default_version="137.0.7151.120"):
+    potential_paths = [
+        os.path.join(os.environ.get("PROGRAMFILES", ""), "Google\\Chrome\\Application\\chrome.exe"),
+        os.path.join(os.environ.get("PROGRAMFILES(X86)", ""), "Google\\Chrome\\Application\\chrome.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google\\Chrome\\Application\\chrome.exe"),
+    ]
 
-import platform
+    for path in potential_paths:
+        if os.path.exists(path):
+            try:
+                info = win32api.GetFileVersionInfo(path, "\\")
+                ms = info['FileVersionMS']
+                ls = info['FileVersionLS']
+                version = f"{ms >> 16}.{ms & 0xFFFF}.{ls >> 16}.{ls & 0xFFFF}"
+                return version
+            except Exception as e:
+                logger.warning(f"[Selenium] Failed to read version from {path}: {e}")
+                continue
 
+    logger.warning("[Selenium] Could not detect Chrome version. Using default.")
+    return default_version
 
 def fetch_with_selenium(url, logger):
     system = platform.system()
     options = uc.ChromeOptions()
+
     if system == "Linux":
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
-    # macos
-    # elif system == "Darwin":
-    #     options.add_argument("--headless=new")
 
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-extensions")
@@ -70,9 +87,13 @@ def fetch_with_selenium(url, logger):
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     )
+    version = get_chrome_version_win(logger)
+    major_version = int(version.split('.')[0]) if version else 137
+
     driver = None
     try:
-        driver = uc.Chrome(options=options)
+        driver = uc.Chrome(version_main=major_version, options=options)
+        logger.info(f"[Selenium] Navigating to: {url}")
         driver.get(url)
         driver.implicitly_wait(2)
 
@@ -90,15 +111,6 @@ def fetch_with_selenium(url, logger):
         return False, None
 
     finally:
-        if driver:
-            try:
-                driver.quit()
-            except Exception as e:
-                if logger:
-                    logger.warning(
-                        f"[Selenium] Exception while quitting driver for {url}: {e}"
-                    )
-
         if driver:
             try:
                 driver.quit()

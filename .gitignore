@@ -175,4 +175,3 @@ cython_debug/
 
 # LLM-news logging
 logs/
-test.py

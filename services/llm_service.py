@@ -174,8 +174,7 @@ async def process_article(article):
                     "source": article.get("url", ""),
                     "title": article.get("title", ""),
                     "raw_content": full_content,
-                    "missing_categories": [],
-                    "prompt": full_prompt
+                    "missing_categories": []
                 },
             }
 
@@ -219,5 +218,4 @@ Examples:
         return parsed_dict.get("is_article", False), parsed_dict.get("reason", "No reason provided")
     except Exception as e:
         logger.error(f"[LLM] URL validation error for {url}: {e}")
-        # Default to accepting if validation fails
         return True, f"Validation failed, defaulting to accept: {str(e)}"
