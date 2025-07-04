@@ -15,7 +15,7 @@
 ## Quick setup - frontend
 1. cd `frontend`
 2. `npm install`
-3. `npm run start`
+3. `npm run dev`
 
 ## Collecting sources
 LLM-News collects sources (URLs) by using the Hacker News & Google API. The Hacker News API returns a list of websites uploaded and upvoted by its comprehensive userbase. On the other hand, the Google API allows for a more dynamic approach in which a search string can be defined to find sources on your own terms. Keep in mind that a Google search string must be delicately balanced to reduce noise to a minimum.
